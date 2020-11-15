@@ -1,6 +1,6 @@
 source 'https://rubygems.org'
 
-ruby File.read(File.expand_path '../.ruby-version', __FILE__).strip.sub /\-p[0-9]+$/, '' # Read the rbenv version file
+ruby "2.7.2"
 gem 'rails', '~> 6.0', '>= 6.0.3.1'
 
 # Servers
