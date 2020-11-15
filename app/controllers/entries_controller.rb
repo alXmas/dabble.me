@@ -119,22 +119,21 @@ class EntriesController < ApplicationController
   end
 
   def update
-    if current_user.is_free?
-      flash[:alert] = "<a href='#{subscribe_url}'' class='alert-link'>Subscribe to PRO</a> to edit entries.".html_safe
-      redirect_to root_path and return
-    end
-    
-    params = EntrieService.prepare(params)
-    entry = @entry.becomes(UpdateEntrieFrom)
+    subscribe_to_pro if current_user.is_free?
+    params = EntryService.build_params(params)
+    entry = @entry.becomes(UpdateEntryFrom)
     
     if entry.update(params)
+      track_ga_event('Update')
+      flash[:notice] = "Entry successfully updated!"
+      redirect_to day_entry_path(year: entry.date.year, month: entry.date.month, day: entry.date.day)
+    else
+      render 'edit'
+    end
   end
 
   def destroy
-    if current_user.is_free?
-      flash[:alert] = "<a href='#{subscribe_url}'' class='alert-link'>Subscribe to PRO</a> to edit entries.".html_safe
-      redirect_to root_path and return
-    end
+    subscribe_to_pro if current_user.is_free?
 
     @entry.destroy
     track_ga_event('Delete')
@@ -232,4 +231,10 @@ class EntriesController < ApplicationController
     end
     json_hash.to_json
   end
+
+  private
+    def subscribe_to_pro
+      flash[:alert] = "<a href='#{subscribe_url}'' class='alert-link'>Subscribe to PRO</a> to edit entries.".html_safe
+      redirect_to root_path and return
+    end
 end
