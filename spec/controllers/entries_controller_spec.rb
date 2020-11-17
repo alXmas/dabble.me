@@ -40,6 +40,21 @@ RSpec.describe EntriesController, type: :controller do
       expect(response.body).to have_content(entry.body)
     end
   end
+  describe 'update' do
+    let(:params) do
+      { entry: {
+        entry: 'Testing body',
+        date: Time.now,
+        image_url: 'https://dabble.me/favicon-32x32.png',
+        inspiration_id: inspiration.id } }
+    end
+
+    it 'should update entry' do
+      sign_in user
+      put :import, params: params
+      expect(response.status).to eq 200
+    end
+  end
 
   describe 'new' do
     it 'should redirect to sign in if not logged in' do
