@@ -45,7 +45,7 @@ class EntriesController < ApplicationController
 
   def show
     if @entry
-      track_ga_event('Show')
+      track_event('Show')
       render 'show'
     else
       redirect_to entries_path
@@ -59,7 +59,7 @@ class EntriesController < ApplicationController
   def random
     @entry = current_user.random_entry
     if @entry
-      track_ga_event('Random')
+      track_event('Random')
       render 'show'
     else
       redirect_to entries_path
@@ -93,7 +93,7 @@ class EntriesController < ApplicationController
       end
       if @existing_entry.save
         flash[:notice] = "Merged with existing entry on #{@existing_entry.date.strftime("%B %-d")}."
-        track_ga_event('Merged')
+        track_event('Merged')
         redirect_to day_entry_path(year: @existing_entry.date.year, month: @existing_entry.date.month, day: @existing_entry.date.day)
       else
         render 'new'
@@ -101,7 +101,7 @@ class EntriesController < ApplicationController
     else
       @entry = current_user.entries.create(entry_params)
       if @entry.save
-        track_ga_event('New')
+        track_event('New')
         flash[:notice] = "Entry created successfully!"
         redirect_to day_entry_path(year: @entry.date.year, month: @entry.date.month, day: @entry.date.day)
       else
@@ -115,57 +115,35 @@ class EntriesController < ApplicationController
     if current_user.is_free?
       @entry.body = @entry.sanitized_body
     end
-    track_ga_event('Edit')
+    track_event('Edit')
   end
 
   def update
-    if current_user.is_free?
-      flash[:alert] = "<a href='#{subscribe_url}'' class='alert-link'>Subscribe to PRO</a> to edit entries.".html_safe
-      redirect_to root_path and return
-    end
+    byebug
+    subscribe_to_pro if current_user.is_free?
+    entry = EntryService.build_entry(@entry, current_user, entry_params)
 
-    @existing_entry = current_user.existing_entry(params[:entry][:date].to_s)
-
-    if @entry.present? && @existing_entry.present? && @entry != @existing_entry && params[:entry][:entry].present?
-      # existing entry exists, so add to it
-      @existing_entry.body += "<hr>#{params[:entry][:entry]}"
-      @existing_entry.inspiration_id = params[:entry][:inspiration_id] if params[:entry][:inspiration_id].present?
-      if @existing_entry.image_url_cdn.blank? && @entry.image.present?
-        @existing_entry.image = @entry.image
-      elsif @entry.image.present?
-        @existing_entry.body += "<br><a href='#{@entry.image_url_cdn}'><img src='#{@entry.image_url_cdn}'></a>"
-      end
-      if @existing_entry.save
-        @entry.delete
-        flash[:notice] = "Merged with existing entry on #{@existing_entry.date.strftime('%B %-d')}."
-        track_ga_event('Update')
-        redirect_to day_entry_path(year: @existing_entry.date.year, month: @existing_entry.date.month, day: @existing_entry.date.day) and return
-      else
-        render 'edit'
-      end
-    elsif params[:entry][:entry].blank?
-      @entry.destroy
+    if entry[:merged]
+      flash[:notice] = "Merged with existing entry on #{entry[:date].strftime('%B %-d')}."
+      track_event('Update')
+      redirect_to day_entry_path(year: entry[:date].year, month: entry[:date].month, day: entry[:date].day)
+    elsif entry[:deleted]
       flash[:notice] = 'Entry deleted!'
       redirect_back_or_to entries_path
+    elsif entry[:updated]
+      track_event('Update')
+      flash[:notice] = "Entry successfully updated!"
+      redirect_to day_entry_path(year: entry[:date].year, month: entry[:date].month, day: entry[:date].day)
     else
-      if @entry.update(entry_params)
-        track_ga_event('Update')
-        flash[:notice] = "Entry successfully updated!"
-        redirect_to day_entry_path(year: @entry.date.year, month: @entry.date.month, day: @entry.date.day)
-      else
-        render 'edit'
-      end
+      render 'edit'
     end
   end
 
   def destroy
-    if current_user.is_free?
-      flash[:alert] = "<a href='#{subscribe_url}'' class='alert-link'>Subscribe to PRO</a> to edit entries.".html_safe
-      redirect_to root_path and return
-    end
+    subscribe_to_pro if current_user.is_free?
 
     @entry.destroy
-    track_ga_event('Delete')
+    track_event('Delete')
     flash[:notice] = 'Entry deleted successfully.'
     redirect_to entries_path
   end
@@ -176,7 +154,7 @@ class EntriesController < ApplicationController
     else
       @entries = current_user.entries.sort_by(&:date)
     end
-    track_ga_event('Export')
+    track_event('Export')
     respond_to do |format|
       format.json { send_data JSON.pretty_generate(JSON.parse(@entries.to_json(only: [:date, :body, :image]))), filename: "export_#{Time.now.strftime('%Y-%m-%d')}.json" }
       format.txt do
@@ -211,13 +189,6 @@ class EntriesController < ApplicationController
     return nil unless Date.today > Date.parse("2019-12-25") && Date.today < Date.parse("2020-01-07")
     if request.referer.nil? && params[:year] == "2018"
       redirect_to review_path(2019)
-    end
-  end
-
-  def track_ga_event(action)
-    if ENV['GOOGLE_ANALYTICS_ID'].present?
-      tracker = Staccato.tracker(ENV['GOOGLE_ANALYTICS_ID'])
-      tracker.event(category: 'Web Entry', action: action, label: current_user.user_key)
     end
   end
 
@@ -260,4 +231,10 @@ class EntriesController < ApplicationController
     end
     json_hash.to_json
   end
+
+  private
+    def subscribe_to_pro
+      flash[:alert] = "<a href='#{subscribe_url}'' class='alert-link'>Subscribe to PRO</a> to edit entries.".html_safe
+      redirect_to root_path and return
+    end
 end
